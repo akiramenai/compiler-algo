@@ -3,6 +3,9 @@ compiler: clang
 os: osx
 osx_image: xcode9.1
 
+before_install:
+- brew install boost
+
 script:
 - mkdir build
 - cd build
