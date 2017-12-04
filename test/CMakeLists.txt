@@ -8,6 +8,7 @@ ExternalProject_Add(googletest
 )
 
 add_executable(unittest
+  ../src/MIR.cpp
   test.cpp)
 
 add_dependencies(unittest googletest)
@@ -29,4 +30,6 @@ if (APPLE)
 	set_target_properties(GTEST_MAIN_LIB PROPERTIES IMPORTED_LOCATION ${EXTERNAL_INSTALL_LOCATION}/lib/libgtest_main.a)
 endif (APPLE)
 
+add_dependencies(unittest GTEST_LIB)
+add_dependencies(unittest GTEST_MAIN_LIB)
 target_link_libraries(unittest GTEST_LIB GTEST_MAIN_LIB pthread)
