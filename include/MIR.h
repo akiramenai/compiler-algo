@@ -8,22 +8,8 @@
 #ifndef MIR_H
 #define MIR_H
 
-#if __has_include(<variant>)
-#include <variant>
-#else
-#include <boost/variant.hpp>
-#endif
-#include <iostream>
-#if __has_include(<optional>)
-#include <optional>
-#else
-#include <boost/optional.hpp>
-#endif
-#if __has_include(<string_view>)
-#include <string_view>
-#else
-#include <boost/utility/string_view.hpp>
-#endif
+#include "compatibility.h"
+
 #include <boost/container/stable_vector.hpp>
 #include <set>
 #include <string>
@@ -31,24 +17,6 @@
 #include <vector>
 
 namespace wyrm {
-
-#if __has_include(<variant>) && !defined(USE_BOOST_CONTAINERS)
-template <typename... Args> using variant = std::variant<Args...>;
-#else
-template <typename... Args> using variant = boost::variant<Args...>;
-#endif
-
-#if __has_include(<optional>) && !defined(USE_BOOST_CONTAINERS)
-template <typename ValueT> using optional = std::optional<ValueT>;
-#else
-template <typename ValueT> using optional = boost::optional<ValueT>;
-#endif
-
-#if __has_include(<string_view>) && !defined(USE_BOOST_CONTAINERS)
-using string_view = std::string_view;
-#else
-using string_view = boost::string_view;
-#endif
 
 /// \brief Represent symbolic register (a variable in high level language).
 using SymReg = std::size_t;
