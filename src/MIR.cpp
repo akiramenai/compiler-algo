@@ -1,19 +1,23 @@
 #include "MIR.h"
+
 #include <cassert>
 #include <iostream>
 #include <limits>
 
 namespace wyrm {
+
+std::ostream &operator<<(std::ostream &stream, const SymReg &symReg) {
+  if (symReg.HasName)
+    stream << "%" << GlobalContext.Names.at(&symReg);
+  else
+    stream << "%%";
+  return stream;
+}
+
 std::ostream &operator<<(std::ostream &stream, const Module &module) {
   stream << "module " << module.Name << "\n";
-  for (size_t index : module.GlobalVariables) {
-    stream << "global %";
-    if (module.SymRegToName.count(index))
-      stream << module.SymRegToName.at(index);
-    else
-      stream << std::to_string(index);
-    stream << "\n";
-  }
+  for (auto &symReg : module.GlobalVariables)
+    stream << "global " << symReg << "\n";
   for (const auto &F : module.Functions)
     stream << F;
   return stream;
@@ -21,57 +25,72 @@ std::ostream &operator<<(std::ostream &stream, const Module &module) {
 
 std::ostream &operator<<(std::ostream &stream, const Function &function) {
   stream << "function " << function.Name << "(";
-  for (const auto &ArgName : function.ArgNames)
+  for (auto ArgName : function.ArgNames)
     stream << ArgName << ", ";
   stream << "...) {\n";
   stream << "}\n";
   return stream;
 }
 
-SymReg MIRBuilder::addGlobalVariable(const std::string &name) {
-  assert(TheModule.SymRegNum < std::numeric_limits<std::size_t>::max());
-  TheModule.SymRegNum++;
-  int i = 1;
-  auto NewName = [name](int i) { return name + "." + std::to_string(i); };
+SymReg &MIRBuilder::createGlobalVariable(std::string &&name) {
+  TheModule.GlobalVariables.emplace_back(SymReg{true});
+  SymReg &Result = TheModule.GlobalVariables.back();
+  auto &GlobalNames = GlobalContext.ModuleSymbols[&TheModule].GlobalVariables;
+  size_t i = 1;
+  auto NewName = [name](size_t i) { return name + "." + std::to_string(i); };
   bool NeedRename{};
-  if (TheModule.NameToSymReg.count(name) != 0u) {
+  if (GlobalNames.count(name) != 0u) {
     NeedRename = true;
-    while (TheModule.NameToSymReg.count(NewName(i)) != 0u) {
+    while (GlobalNames.count(NewName(i)) != 0u) {
       ++i;
     }
   }
-  TheModule.NameToSymReg[NeedRename ? NewName(i) : name] = TheModule.SymRegNum;
-  TheModule.SymRegToName[TheModule.SymRegNum] =
-      (NeedRename ? NewName(i) : name);
-  TheModule.GlobalVariables.insert(TheModule.SymRegNum);
-  return TheModule.SymRegNum;
-}
-
-optional<SymReg> MIRBuilder::findGlobalVariable(const std::string &name) const {
-  if (TheModule.NameToSymReg.count(name) == 0u)
-    return {};
-  SymReg Result = TheModule.NameToSymReg.at(name);
-  if (TheModule.GlobalVariables.count(Result) == 0u)
-    return {};
+  auto InternedName = internedName(NeedRename ? NewName(i) : name);
+  GlobalNames[InternedName] = &Result;
+  GlobalContext.NameTable[&Result] = InternedName;
   return Result;
 }
 
-Function *MIRBuilder::addFunction(std::string &&name,
-                                  std::vector<std::string> &&namedParameters) {
-  if (TheModule.NameToFunction.count(name) != 0u)
+SymReg *MIRBuilder::findGlobalVariable(string_view name) const {
+  auto &GlobalNames = GlobalContext.ModuleSymbols[&TheModule].GlobalVariables;
+  if (GlobalNames.count(name) == 0u)
+    return nullptr;
+  return GlobalNames[name];
+}
+
+Function *
+MIRBuilder::createFunction(std::string &&name,
+                           std::vector<std::string> &&namedParameters) {
+  auto &FunctionNames = GlobalContext.ModuleSymbols[&TheModule].Functions;
+  if (FunctionNames.count(name) != 0u)
     return nullptr;
   // TODO: private constructor might be called from emplace_back
   // see:
   // https://stackoverflow.com/questions/17007977/vectoremplace-back-for-objects-with-a-private-constructor
   Function F(std::move(name), std::move(namedParameters));
   TheModule.Functions.emplace_back(std::move(F));
-  auto NameAsCstr = TheModule.Functions.back().Name.c_str();
-  return TheModule.NameToFunction[NameAsCstr] = &TheModule.Functions.back();
+  auto Name = TheModule.Functions.back().Name;
+  return FunctionNames[Name] = &TheModule.Functions.back();
 }
 
-Function *MIRBuilder::findFunction(string_view name) {
-  if (TheModule.NameToFunction.count(name) == 0u)
+Function *MIRBuilder::findFunction(string_view name) const {
+  auto &FunctionNames = GlobalContext.ModuleSymbols[&TheModule].Functions;
+  if (FunctionNames.count(name) == 0u)
     return nullptr;
-  return TheModule.NameToFunction[name];
+  return FunctionNames[name];
 }
+
+BasicBlock &MIRBuilder::createBasicBlock(Function &func, string_view label) {
+  assert(func.LabelToBasicBlock.count(label) == 0u && "Label must be unique");
+  // TODO: private constructor might be called from emplace_back
+  BasicBlock BB;
+  func.BasicBlocks.emplace_back(std::move(BB));
+  auto &BBRef = func.BasicBlocks.back();
+  if (!label.empty())
+    func.LabelToBasicBlock[label] = &BBRef;
+  return BBRef;
+}
+
+void MIRBuilder::setBasicBlock(BasicBlock &bb) { CurrentBB = &bb; }
+
 } // namespace wyrm

@@ -8,7 +8,7 @@
 #ifndef MIR_H
 #define MIR_H
 
-#include "compatibility.h"
+#include "context.h"
 
 #include <boost/container/stable_vector.hpp>
 #include <set>
@@ -19,7 +19,11 @@
 namespace wyrm {
 
 /// \brief Represent symbolic register (a variable in high level language).
-using SymReg = std::size_t;
+struct SymReg {
+  bool HasName{false};
+  friend std::ostream &operator<<(std::ostream &stream, const SymReg &symReg);
+};
+
 /// \brief Destination for GoTo or Branch instruction.
 using Label = std::size_t;
 /// \brief Type of constants.
@@ -28,11 +32,7 @@ using Imm = int;
 /// \brief Value is either constant or located in symbolic register.
 using Value = variant<SymReg, Imm>;
 
-/// \brief Begin of function body.
-struct BeginInst {};
-/// \brief End of function body.
-struct EndInst {};
-
+struct InstBase {};
 /// \brief Represent receiving function argument.
 /// Define function parameter as a symbolic register with unknown value.
 struct ReceiveInst {
@@ -56,7 +56,7 @@ struct RetInst {
 };
 
 struct CallInst {
-  SymReg Dest;
+  optional<SymReg> Dest;
   std::vector<Value> Arguments;
   auto args_begin() { return std::begin(Arguments); }
   auto args_end() { return std::end(Arguments); }
@@ -109,8 +109,8 @@ struct BinOpInst {
   BinOpKind Kind;
 };
 
-using Instruction = variant<BeginInst, EndInst, ReceiveInst, RetInst, GoToInst,
-                            BrInst, CallInst, UnOpInst, BinOpInst, AssignInst>;
+using Instruction = variant<ReceiveInst, RetInst, GoToInst, BrInst, CallInst,
+                            UnOpInst, BinOpInst, AssignInst>;
 
 class BasicBlock {
 public:
@@ -126,7 +126,8 @@ public:
   friend class MIRBuilder;
 
 private:
-  std::vector<Instruction> Instructions;
+  BasicBlock() {}
+  std::vector<Instruction> Instructions{};
 };
 
 class Function {
@@ -140,16 +141,20 @@ public:
   Function &operator=(Function) = delete;
   Function(Function &&) = default;
   Function &operator=(Function &&) = default;
+  string_view Name;
+  std::vector<string_view> ArgNames;
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &stream,
                                   const Function &function);
 
 private:
   Function(std::string &&name, std::vector<std::string> &&argNames)
-      : Name{std::move(name)}, ArgNames{std::move(argNames)} {}
-  std::string Name;
-  std::vector<std::string> ArgNames;
-  std::vector<BasicBlock> BasicBlocks{};
+      : Name{internedName(std::move(name))} {
+    for (auto &&ArgName : argNames)
+      ArgNames.emplace_back(internedName(std::move(ArgName)));
+  }
+  boost::container::stable_vector<BasicBlock> BasicBlocks{};
+  std::unordered_map<string_view, BasicBlock *> LabelToBasicBlock{};
 };
 
 class Module {
@@ -159,8 +164,8 @@ public:
   auto cbegin() { return std::cbegin(Functions); }
   auto cend() const { return std::cend(Functions); }
   Function &operator[](size_t index) { return Functions[index]; }
-  std::string &Name{ModuleName};
-  Module(string_view name) : ModuleName{name} {}
+  string_view Name;
+  Module(std::string &&name) : Name{internedName(std::move(name))} {}
   Module(const Module &) = delete;
   Module &operator=(Module) = delete;
   Module(Module &&) = default;
@@ -169,46 +174,47 @@ public:
   friend std::ostream &operator<<(std::ostream &stream, const Module &module);
 
 private:
-  std::string ModuleName;
   boost::container::stable_vector<Function> Functions{};
-  std::set<SymReg> GlobalVariables{};
-  size_t SymRegNum{0};
-  std::unordered_map<std::string, SymReg> NameToSymReg{};
-  std::unordered_map<SymReg, std::string> SymRegToName{};
-  std::unordered_map<string_view, Function *> NameToFunction{};
+  boost::container::stable_vector<SymReg> GlobalVariables{};
 };
 
 /// \brief Helper for building IR.
 class MIRBuilder {
 public:
-  /// \brief Add \p BB to the module's basic block list, create a new if \p BB
-  /// is nullptr.
-  //  void addBasicBlock(BasicBlock *bb);
   /// \brief Add instruction to the end of current basic block.
-  /// If there is no current basic block create a new one and make it current.
-  //  void addInstruction();
+  /// \pre CurrentBB != nullptr
+  template <typename InstType, typename... ArgTypes>
+  Instruction createInstruction(ArgTypes &&... args) {
+    assert(CurrentBB != nullptr);
+    return InstType(std::forward<ArgTypes...>(args...));
+  }
   /// \brief Set \p BB as the current basic block.
-  /// Precondition: \p must belong to the module.
-  //  void setBasicBlock(BasicBlock &bb);
-  /// \brief Add function if there is no function with \p name in the module.
-  /// \return Address of added function, nullptr if no function was added.
-  Function *addFunction(std::string &&name,
-                        std::vector<std::string> &&namedParameters);
+  void setBasicBlock(BasicBlock &bb);
+  /// \brief Add a new basic block to \p func's basic block list.
+  /// \param label Optional label for the block for GoTo instructions. Emptry
+  /// string means no label.
+  /// \pre \p label must be unique withing a BasicBlock.
+  BasicBlock &createBasicBlock(Function &func, string_view label);
+  /// \brief Create a new function in the module if there is no function with \p
+  /// name in the module. \return Address of added function, nullptr if no
+  /// function was added.
+  Function *createFunction(std::string &&name,
+                           std::vector<std::string> &&namedParameters);
   /// \brief Find function with p \name in the module and return its address.
-  Function *findFunction(string_view name);
+  Function *findFunction(string_view name) const;
   /// \brief Create new global variable with specified \p name.
   /// If \p name is already defined create new global variable with
   /// name = \p name.unique_numeric_suffix.
-  SymReg addGlobalVariable(const std::string &name);
+  SymReg &createGlobalVariable(std::string &&name);
   /// \brief Find global variable with \p name in the module and return
   /// corresponding symbolic register.
-  optional<SymReg> findGlobalVariable(const std::string &name) const;
+  SymReg *findGlobalVariable(string_view name) const;
   MIRBuilder(Module &module) : TheModule{module} {}
 
 private:
-  [[maybe_unused]] Module &TheModule;
-  [[maybe_unused]] BasicBlock *BB;
+  Module &TheModule;
+  BasicBlock *CurrentBB{nullptr};
 };
 
-} // namespace ca
+} // namespace wyrm
 #endif // MIR_H

@@ -4,7 +4,7 @@
 #include <sstream>
 
 using namespace wyrm;
-TEST(TrivialModule, BuildMIR) {
+TEST(TrivialModule, MIRBuilder) {
   Module TheModule{"my_module"};
   std::stringstream ss_expected{}, ss_actual{};
   ss_expected << "module my_module\n";
@@ -12,11 +12,11 @@ TEST(TrivialModule, BuildMIR) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables1, BuildMIR) {
+TEST(GlobalVariables1, MIRBuilder) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
-  Builder.addGlobalVariable("var1");
-  Builder.addGlobalVariable("var2");
+  Builder.createGlobalVariable("var1");
+  Builder.createGlobalVariable("var2");
   std::stringstream ss_expected{}, ss_actual{};
   ss_expected << "module my_module\n"
                  "global %var1\n"
@@ -25,11 +25,11 @@ TEST(GlobalVariables1, BuildMIR) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables2, BuildMIR) {
+TEST(GlobalVariables2, MIRBuilder) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
-  Builder.addGlobalVariable("var");
-  Builder.addGlobalVariable("var");
+  Builder.createGlobalVariable("var");
+  Builder.createGlobalVariable("var");
   std::stringstream ss_expected{}, ss_actual{};
   ss_expected << "module my_module\n"
                  "global %var\n"
@@ -38,23 +38,23 @@ TEST(GlobalVariables2, BuildMIR) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables3, BuildMIR) {
+TEST(GlobalVariables3, MIRBuilder) {
   Module TheModule{"bestiary"};
   MIRBuilder Builder{TheModule};
-  auto expected = Builder.addGlobalVariable("wyrm");
-  Builder.addGlobalVariable("dragon");
-  auto wyrm = Builder.findGlobalVariable("wyrm");
-  auto drake = Builder.findGlobalVariable("drake");
+  auto &expected = Builder.createGlobalVariable("wyrm");
+  Builder.createGlobalVariable("dragon");
+  auto *wyrm = Builder.findGlobalVariable("wyrm");
+  auto *drake = Builder.findGlobalVariable("drake");
   EXPECT_TRUE(wyrm);
-  EXPECT_EQ(expected, *wyrm);
+  EXPECT_EQ(&expected, wyrm);
   EXPECT_FALSE(drake);
 }
 
-TEST(Function1, BuildMIR) {
+TEST(Function1, MIRBuilder) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
-  Builder.addFunction("func1", {"a", "b", "c"});
-  Builder.addFunction("func2", {"d", "e", "f"});
+  Builder.createFunction("func1", {"a", "b", "c"});
+  Builder.createFunction("func2", {"d", "e", "f"});
   std::stringstream ss_expected{}, ss_actual{};
   ss_expected << "module my_module\n"
                  "function func1(a, b, c, ...) {\n"
@@ -65,15 +65,17 @@ TEST(Function1, BuildMIR) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(Function2, BuildMIR) {
+TEST(Function2, MIRBuilder) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
-  Builder.addFunction("func1", {"a", "b", "c"});
-  auto Func2Expected = Builder.addFunction("func2", {"d", "e", "f"});
-  Builder.addFunction("func3", {"g", "h", "i"});
-  Builder.addFunction("func42", {"w", "y", "r", "m"});
+  Builder.createFunction("func1", {"a", "b", "c"});
+  auto Func2Expected = Builder.createFunction("func2", {"d", "e", "f"});
+  Builder.createFunction("func3", {"g", "h", "i"});
+  Builder.createFunction("func42", {"w", "y", "r", "m"});
   auto Func2Actual = Builder.findFunction("func2");
   auto FuncNotFound = Builder.findFunction("make_code_faster");
+  auto Func2Duplicate = Builder.createFunction("func2", {});
   EXPECT_EQ(Func2Expected, Func2Actual);
   EXPECT_EQ(nullptr, FuncNotFound);
+  EXPECT_EQ(nullptr, Func2Duplicate);
 }

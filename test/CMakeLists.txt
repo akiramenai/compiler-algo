@@ -8,6 +8,7 @@ ExternalProject_Add(googletest
 )
 
 add_executable(unittest
+  ../src/context.cpp
   ../src/MIR.cpp
   test.cpp)
 
