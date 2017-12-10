@@ -12,19 +12,19 @@ static bool areEqual(const std::vector<std::size_t> &v1,
   return std::is_permutation(std::begin(v1), std::end(v1), std::begin(v2));
 }
 
-TEST(DFSOrder, Graph) {
+TEST(Graph, DFSOrder) {
   const Graph &IfG{Graphs[0]};
   EXPECT_TRUE(areEqual(IfG.DFSOrder(), {0, 1, 2}));
 }
 
-TEST(DominatorsAreCalculatedForAllNodes, Dominance) {
+TEST(Dominance, DominatorsAreCalculatedForAllNodes) {
   for (const auto &Graph : Graphs) {
     auto DomMap = wyrm::dominators_slow(Graph);
     EXPECT_EQ(DomMap.size(), Graph.size());
   }
 }
 
-TEST(AnyNodeDominatesItself, Dominance) {
+TEST(Dominance, AnyNodeDominatesItself) {
   for (const auto &Graph : Graphs) {
     auto DomMap = wyrm::dominators_slow(Graph);
     for (auto v : Graph.DFSOrder()) {
@@ -33,7 +33,7 @@ TEST(AnyNodeDominatesItself, Dominance) {
   }
 }
 
-TEST(Dominators1, Dominance) {
+TEST(Dominance, Dominators1) {
   Graph &IfG{Graphs[0]};
   auto DomMap = wyrm::dominators_slow(IfG);
   EXPECT_EQ(DomMap[0].size(), 1u);
@@ -43,7 +43,7 @@ TEST(Dominators1, Dominance) {
   EXPECT_EQ(DomMap[2].count(0), 1u);
 }
 
-TEST(Dominators2, Dominance) {
+TEST(Dominance, Dominators2) {
   Graph &G{Graphs[1]};
   auto DomMap = wyrm::dominators_slow(G);
   EXPECT_EQ(DomMap[0].size(), 1u);

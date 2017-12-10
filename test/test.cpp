@@ -4,7 +4,7 @@
 #include <sstream>
 
 using namespace wyrm;
-TEST(TrivialModule, MIRBuilder) {
+TEST(MIRBuilder, TrivialModule) {
   Module TheModule{"my_module"};
   std::stringstream ss_expected{}, ss_actual{};
   ss_expected << "module my_module\n";
@@ -12,7 +12,7 @@ TEST(TrivialModule, MIRBuilder) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables1, MIRBuilder) {
+TEST(MIRBuilder, GlobalVariables1) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   Builder.createGlobalVariable("var1");
@@ -25,7 +25,7 @@ TEST(GlobalVariables1, MIRBuilder) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables2, MIRBuilder) {
+TEST(MIRBuilder, GlobalVariables2) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   Builder.createGlobalVariable("var");
@@ -38,7 +38,7 @@ TEST(GlobalVariables2, MIRBuilder) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(GlobalVariables3, MIRBuilder) {
+TEST(MIRBuilder, GlobalVariables3) {
   Module TheModule{"bestiary"};
   MIRBuilder Builder{TheModule};
   auto &expected = Builder.createGlobalVariable("wyrm");
@@ -50,7 +50,7 @@ TEST(GlobalVariables3, MIRBuilder) {
   EXPECT_FALSE(drake);
 }
 
-TEST(Function1, MIRBuilder) {
+TEST(MIRBuilder, Function1) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   Builder.createFunction("func1", {"a", "b", "c"});
@@ -65,7 +65,7 @@ TEST(Function1, MIRBuilder) {
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }
 
-TEST(Function2, MIRBuilder) {
+TEST(MIRBuilder, Function2) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   Builder.createFunction("func1", {"a", "b", "c"});
