@@ -59,18 +59,22 @@ SymReg *MIRBuilder::findGlobalVariable(string_view name) const {
 }
 
 Function *
-MIRBuilder::createFunction(std::string &&name,
-                           std::vector<std::string> &&namedParameters) {
+MIRBuilder::createFunction(std::string &&Name,
+                           std::vector<std::string> &&NamedParameters) {
   auto &FunctionNames = GlobalContext.ModuleSymbols[&TheModule].Functions;
-  if (FunctionNames.count(name) != 0u)
+  if (FunctionNames.count(Name) != 0u)
     return nullptr;
   // TODO: private constructor might be called from emplace_back
   // see:
   // https://stackoverflow.com/questions/17007977/vectoremplace-back-for-objects-with-a-private-constructor
-  Function F(std::move(name), std::move(namedParameters));
+  std::vector<string_view> InternedParameters;
+  InternedParameters.reserve(NamedParameters.size());
+  for (auto &ParName : NamedParameters)
+    InternedParameters.push_back(internedName(std::move(ParName)));
+  Function F(&TheModule, std::move(Name), std::move(InternedParameters));
   TheModule.Functions.emplace_back(std::move(F));
-  auto Name = TheModule.Functions.back().Name;
-  return FunctionNames[Name] = &TheModule.Functions.back();
+  auto FuncName = TheModule.Functions.back().Name;
+  return FunctionNames[FuncName] = &TheModule.Functions.back();
 }
 
 Function *MIRBuilder::findFunction(string_view name) const {
@@ -90,7 +94,5 @@ BasicBlock &MIRBuilder::createBasicBlock(Function &func, string_view label) {
     func.LabelToBasicBlock[label] = &BBRef;
   return BBRef;
 }
-
-void MIRBuilder::setBasicBlock(BasicBlock &bb) { CurrentBB = &bb; }
 
 } // namespace wyrm

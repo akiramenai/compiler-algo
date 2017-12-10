@@ -18,6 +18,10 @@
 
 namespace wyrm {
 
+class BasicBlock;
+class Function;
+class Module;
+
 /// \brief Represent symbolic register (a variable in high level language).
 struct SymReg {
   bool HasName{false};
@@ -141,17 +145,23 @@ public:
   Function &operator=(Function) = delete;
   Function(Function &&) = default;
   Function &operator=(Function &&) = default;
+  Module *parent() {return OwningModule;}
   const string_view Name;
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &stream,
                                   const Function &function);
 
 private:
+  Module *OwningModule;
   std::vector<string_view> ArgNames;
-  Function(std::string &&name, std::vector<std::string> &&argNames)
-      : Name{internedName(std::move(name))} {
-    for (auto &&ArgName : argNames)
-      ArgNames.emplace_back(internedName(std::move(ArgName)));
+  Function(Module *Parent, std::string &&Name,
+           std::vector<string_view> &&ArgNames)
+      // clang-format off
+      : Name{internedName(std::move(Name))},
+        OwningModule{Parent}, ArgNames{std::move(ArgNames)}
+  // clang-format on
+  {
+    assert(Parent && "Parent must be non-null");
   }
   boost::container::stable_vector<BasicBlock> BasicBlocks{};
   std::unordered_map<string_view, BasicBlock *> LabelToBasicBlock{};
@@ -189,7 +199,7 @@ public:
     return InstType(std::forward<ArgTypes...>(args...));
   }
   /// \brief Set \p BB as the current basic block.
-  void setBasicBlock(BasicBlock &bb);
+  void setBasicBlock(BasicBlock &bb) { CurrentBB = &bb; }
   /// \brief Add a new basic block to \p func's basic block list.
   /// \param label Optional label for the block for GoTo instructions. Emptry
   /// string means no label.
@@ -198,8 +208,8 @@ public:
   /// \brief Create a new function in the module if there is no function with \p
   /// name in the module. \return Address of added function, nullptr if no
   /// function was added.
-  Function *createFunction(std::string &&name,
-                           std::vector<std::string> &&namedParameters);
+  Function *createFunction(std::string &&Name,
+                           std::vector<std::string> &&NamedParameters);
   /// \brief Find function with p \name in the module and return its address.
   Function *findFunction(string_view name) const;
   /// \brief Create new global variable with specified \p name.

@@ -50,6 +50,13 @@ TEST(MIRBuilder, GlobalVariables3) {
   EXPECT_FALSE(drake);
 }
 
+TEST(MIRBuilder, FunctionParent) {
+  Module TheModule{"my_module"};
+  MIRBuilder Builder{TheModule};
+  auto Func = Builder.createFunction("func1", {});
+  EXPECT_EQ(&TheModule, Func->parent());
+}
+
 TEST(MIRBuilder, Function1) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
