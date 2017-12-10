@@ -10,6 +10,7 @@ ExternalProject_Add(googletest
 add_executable(unittest
   ../src/context.cpp
   ../src/MIR.cpp
+  graph.cpp
   test.cpp)
 
 add_dependencies(unittest googletest)
@@ -33,4 +34,4 @@ endif (APPLE)
 
 add_dependencies(unittest GTEST_LIB)
 add_dependencies(unittest GTEST_MAIN_LIB)
-target_link_libraries(unittest GTEST_LIB GTEST_MAIN_LIB pthread)
+target_link_libraries(unittest GTEST_LIB GTEST_MAIN_LIB pthread graph dominators)

@@ -141,13 +141,13 @@ public:
   Function &operator=(Function) = delete;
   Function(Function &&) = default;
   Function &operator=(Function &&) = default;
-  string_view Name;
-  std::vector<string_view> ArgNames;
+  const string_view Name;
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &stream,
                                   const Function &function);
 
 private:
+  std::vector<string_view> ArgNames;
   Function(std::string &&name, std::vector<std::string> &&argNames)
       : Name{internedName(std::move(name))} {
     for (auto &&ArgName : argNames)
@@ -164,7 +164,7 @@ public:
   auto cbegin() { return std::cbegin(Functions); }
   auto cend() const { return std::cend(Functions); }
   Function &operator[](size_t index) { return Functions[index]; }
-  string_view Name;
+  const string_view Name;
   Module(std::string &&name) : Name{internedName(std::move(name))} {}
   Module(const Module &) = delete;
   Module &operator=(Module) = delete;

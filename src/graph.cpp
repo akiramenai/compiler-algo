@@ -14,10 +14,16 @@ void Graph::addArc(Arc arc) {
   Data[arc.From].insert(arc.To);
 }
 
-Graph::Graph(const std::vector<Arc> arcs) {
+Graph::Graph(const std::vector<Arc> &arcs) {
   Data.emplace_back(NodeSet{});
   for (const auto arc : arcs)
     addArc(arc);
+}
+
+Graph::Graph(std::initializer_list<Arc> Arcs) {
+  Data.emplace_back(NodeSet{});
+  for (auto Arc : Arcs)
+    addArc(Arc);
 }
 
 const Graph::NodeSet &Graph::successors(std::size_t vertex) const {
@@ -53,16 +59,4 @@ void Graph::dump() const {
     for (auto Dest : AdjacentToCurrent)
       std::cout << I << " -> " << Dest << "\n";
   }
-}
-
-// TODO: Remove tests from graph.cpp
-static bool areEqual(const std::vector<std::size_t> &v1,
-                     const std::vector<std::size_t> &v2) {
-  return std::is_permutation(std::begin(v1), std::end(v1), std::begin(v2));
-}
-
-int main() {
-  Graph IfG{{{0, 1}, {0, 2}, {1, 2}}};
-  IfG.dump();
-  assert(areEqual(IfG.DFSOrder(), {0, 1, 2}));
 }
