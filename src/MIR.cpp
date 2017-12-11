@@ -14,13 +14,20 @@ std::ostream &operator<<(std::ostream &stream, const SymReg &symReg) {
   return stream;
 }
 
-std::ostream &operator<<(std::ostream &stream, const Module &module) {
-  stream << "module " << module.Name << "\n";
-  for (auto &symReg : module.GlobalVariables)
-    stream << "global " << symReg << "\n";
-  for (const auto &F : module.Functions)
-    stream << F;
-  return stream;
+std::ostream &operator<<(std::ostream &Stream, const BasicBlock &BB) {
+  if (BB.hasLabel())
+    Stream << GlobalContext.Names.at(&BB) << ":\n";
+  else {
+    auto &Func = BB.parent();
+    size_t BBNum{1};
+    for (const auto &CurrBB : Func) {
+      if (&BB == &CurrBB)
+        break;
+      BBNum += !CurrBB.hasLabel();
+    }
+    Stream << "BB" << BBNum << ":\n";
+  }
+  return Stream;
 }
 
 std::ostream &operator<<(std::ostream &stream, const Function &function) {
@@ -28,7 +35,18 @@ std::ostream &operator<<(std::ostream &stream, const Function &function) {
   for (auto ArgName : function.ArgNames)
     stream << ArgName << ", ";
   stream << "...) {\n";
+  for (const auto &BB : function)
+    stream << BB;
   stream << "}\n";
+  return stream;
+}
+
+std::ostream &operator<<(std::ostream &stream, const Module &module) {
+  stream << "module " << module.Name << "\n";
+  for (auto &symReg : module.GlobalVariables)
+    stream << "global " << symReg << "\n";
+  for (const auto &F : module.Functions)
+    stream << F;
   return stream;
 }
 
@@ -71,7 +89,7 @@ MIRBuilder::createFunction(std::string &&Name,
   InternedParameters.reserve(NamedParameters.size());
   for (auto &ParName : NamedParameters)
     InternedParameters.push_back(internedName(std::move(ParName)));
-  Function F(&TheModule, std::move(Name), std::move(InternedParameters));
+  Function F(TheModule, std::move(Name), std::move(InternedParameters));
   TheModule.Functions.emplace_back(std::move(F));
   auto FuncName = TheModule.Functions.back().Name;
   return FunctionNames[FuncName] = &TheModule.Functions.back();
@@ -84,14 +102,20 @@ Function *MIRBuilder::findFunction(string_view name) const {
   return FunctionNames[name];
 }
 
-BasicBlock &MIRBuilder::createBasicBlock(Function &func, string_view label) {
-  assert(func.LabelToBasicBlock.count(label) == 0u && "Label must be unique");
+BasicBlock &MIRBuilder::createBasicBlock(Function &Func, std::string &&Label) {
+  assert((Label.empty() ||
+          GlobalContext.FunctionSymbols[&Func].count(Label) == 0u) &&
+         "Label must be unique");
+  BasicBlock BB(Func);
+  BB.HasLabel = !Label.empty();
   // TODO: private constructor might be called from emplace_back
-  BasicBlock BB;
-  func.BasicBlocks.emplace_back(std::move(BB));
-  auto &BBRef = func.BasicBlocks.back();
-  if (!label.empty())
-    func.LabelToBasicBlock[label] = &BBRef;
+  Func.BasicBlocks.emplace_back(std::move(BB));
+  auto &BBRef = Func.BasicBlocks.back();
+  if (Label.empty())
+    return BBRef;
+  string_view InternedLabel = internedName(std::move(Label));
+  GlobalContext.NameTable[&BBRef] = InternedLabel;
+  GlobalContext.FunctionSymbols[&Func].insert(InternedLabel);
   return BBRef;
 }
 

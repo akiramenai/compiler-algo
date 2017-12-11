@@ -54,10 +54,10 @@ TEST(MIRBuilder, FunctionParent) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   auto Func = Builder.createFunction("func1", {});
-  EXPECT_EQ(&TheModule, Func->parent());
+  EXPECT_EQ(&TheModule, &Func->parent());
 }
 
-TEST(MIRBuilder, Function1) {
+TEST(MIRBuilder, FunctionDump) {
   Module TheModule{"my_module"};
   MIRBuilder Builder{TheModule};
   Builder.createFunction("func1", {"a", "b", "c"});
@@ -85,4 +85,25 @@ TEST(MIRBuilder, Function2) {
   EXPECT_EQ(Func2Expected, Func2Actual);
   EXPECT_EQ(nullptr, FuncNotFound);
   EXPECT_EQ(nullptr, Func2Duplicate);
+}
+
+TEST(MIRBuilder, BasicBlockDump) {
+  Module TheModule{"my_module"};
+  MIRBuilder Builder{TheModule};
+  auto F = Builder.createFunction("func1");
+  ASSERT_TRUE(F);
+  Builder.createBasicBlock(*F);
+  Builder.createBasicBlock(*F, "NamedBB");
+  Builder.createBasicBlock(*F);
+  Builder.createBasicBlock(*F);
+  std::stringstream ss_expected{}, ss_actual{};
+  ss_expected << "module my_module\n"
+                 "function func1(...) {\n"
+                 "BB1:\n"
+                 "NamedBB:\n"
+                 "BB2:\n"
+                 "BB3:\n"
+                 "}\n";
+  ss_actual << TheModule;
+  EXPECT_EQ(ss_expected.str(), ss_actual.str());
 }

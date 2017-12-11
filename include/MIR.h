@@ -123,48 +123,49 @@ public:
   auto cbegin() { return std::cbegin(Instructions); }
   auto cend() const { return std::cend(Instructions); }
   Instruction &operator[](size_t index) { return Instructions[index]; }
+  Function &parent() { return OwningFunction; }
+  const Function &parent() const { return OwningFunction; }
+  bool hasLabel() const { return HasLabel; }
   BasicBlock(const BasicBlock &) = delete;
   BasicBlock &operator=(BasicBlock) = delete;
   BasicBlock(BasicBlock &&) = default;
   BasicBlock &operator=(BasicBlock &&) = default;
   friend class MIRBuilder;
+  friend std::ostream &operator<<(std::ostream &Stream, const BasicBlock &BB);
 
 private:
-  BasicBlock() {}
+  BasicBlock(Function &Parent) : OwningFunction{Parent} {}
+  Function &OwningFunction;
   std::vector<Instruction> Instructions{};
+  bool HasLabel{};
 };
 
 class Function {
 public:
   auto begin() { return std::begin(BasicBlocks); }
-  auto end() const { return std::end(BasicBlocks); }
-  auto cbegin() { return std::cbegin(BasicBlocks); }
-  auto cend() const { return std::cend(BasicBlocks); }
+  auto end() { return std::end(BasicBlocks); }
+  auto begin() const { return std::cbegin(BasicBlocks); }
+  auto end() const { return std::cend(BasicBlocks); }
   BasicBlock &operator[](size_t index) { return BasicBlocks[index]; }
   Function(const Function &) = delete;
   Function &operator=(Function) = delete;
   Function(Function &&) = default;
   Function &operator=(Function &&) = default;
-  Module *parent() {return OwningModule;}
+  Module &parent() { return OwningModule; }
+  const Module &parent() const { return OwningModule; }
   const string_view Name;
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &stream,
                                   const Function &function);
 
 private:
-  Module *OwningModule;
+  Module &OwningModule;
   std::vector<string_view> ArgNames;
-  Function(Module *Parent, std::string &&Name,
+  Function(Module &Parent, std::string &&Name,
            std::vector<string_view> &&ArgNames)
-      // clang-format off
       : Name{internedName(std::move(Name))},
-        OwningModule{Parent}, ArgNames{std::move(ArgNames)}
-  // clang-format on
-  {
-    assert(Parent && "Parent must be non-null");
-  }
+        OwningModule{Parent}, ArgNames{std::move(ArgNames)} {}
   boost::container::stable_vector<BasicBlock> BasicBlocks{};
-  std::unordered_map<string_view, BasicBlock *> LabelToBasicBlock{};
 };
 
 class Module {
@@ -204,12 +205,12 @@ public:
   /// \param label Optional label for the block for GoTo instructions. Emptry
   /// string means no label.
   /// \pre \p label must be unique withing a BasicBlock.
-  BasicBlock &createBasicBlock(Function &func, string_view label);
+  BasicBlock &createBasicBlock(Function &Func, std::string &&Label = "");
   /// \brief Create a new function in the module if there is no function with \p
   /// name in the module. \return Address of added function, nullptr if no
   /// function was added.
   Function *createFunction(std::string &&Name,
-                           std::vector<std::string> &&NamedParameters);
+                           std::vector<std::string> &&NamedParameters = {});
   /// \brief Find function with p \name in the module and return its address.
   Function *findFunction(string_view name) const;
   /// \brief Create new global variable with specified \p name.
