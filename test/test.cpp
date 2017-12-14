@@ -1,6 +1,7 @@
 #include "MIR.h"
 #include "gtest/gtest.h"
 #include <iostream>
+#include <memory>
 #include <sstream>
 
 using namespace wyrm;
@@ -106,4 +107,29 @@ TEST(MIRBuilder, BasicBlockDump) {
                  "}\n";
   ss_actual << TheModule;
   EXPECT_EQ(ss_expected.str(), ss_actual.str());
+}
+
+namespace {
+struct InstContext {
+  std::unique_ptr<Module> TheModule;
+  std::unique_ptr<MIRBuilder> Builder;
+};
+
+static InstContext createInstContext() {
+  auto TheModule = std::make_unique<Module>("my_module");
+  auto Builder = std::make_unique<MIRBuilder>(*TheModule);
+  auto *F = Builder->createFunction("func1");
+  assert(F);
+  Builder->setBasicBlock(Builder->createBasicBlock(*F));
+  return {std::move(TheModule), std::move(Builder)};
+}
+} // namespace
+
+TEST(MIRBuilder, ReceiveInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  auto &RcvInst = Builder->createReceiveInst();
+  std::stringstream Expected{}, Actual{};
+  Expected << "  %1 = receive\n";
+  Actual << RcvInst;
+  EXPECT_EQ(Expected.str(), Actual.str());
 }
