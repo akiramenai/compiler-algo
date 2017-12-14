@@ -4,8 +4,8 @@ os: osx
 osx_image: xcode9.1
 
 before_install:
-- brew install ninja
-- brew install boost
+- brew install ninja || true
+- brew install boost || true
 
 script:
 - mkdir build
