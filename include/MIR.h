@@ -9,10 +9,12 @@
 #define MIR_H
 
 #include "context.h"
+#include "wyrm_traits.h"
 
 #include <boost/container/stable_vector.hpp>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -23,9 +25,43 @@ class Function;
 class Module;
 
 /// \brief Represent symbolic register (a variable in high level language).
-struct SymReg {
-  bool HasName{false};
+class SymReg {
+public:
+  SymReg(Module &OwningModule) : OwningModule{&OwningModule} {}
+  SymReg(Function &OwningFunction) : OwningFunction{&OwningFunction} {}
+  SymReg(Module &OwningModule, bool HasName)
+      : HasName{HasName}, OwningModule{&OwningModule} {}
+  SymReg(Function &OwningFunction, bool HasName)
+      : HasName{HasName}, OwningFunction{&OwningFunction} {}
+  SymReg(const SymReg &) = delete;
+  SymReg &operator=(SymReg) = delete;
+  SymReg(SymReg &&) = default;
+  SymReg &operator=(SymReg &&) = default;
+  bool hasName() const { return HasName; }
+  template <typename T,
+            typename = std::enable_if<is_one_of_v<T, Module, Function>>>
+  const T &parent() const {
+    if constexpr (std::is_same_v<T, Module>) {
+      assert(OwningModule && "Symbolic register doesn't belong to a module");
+      return *OwningModule;
+    }
+    if constexpr (std::is_same_v<T, Function>) {
+      assert(OwningFunction &&
+             "Symbolic register doesn't belong to a function");
+      return *OwningFunction;
+    }
+  }
+  template <typename T,
+            typename = std::enable_if<is_one_of_v<T, Module, Function>>>
+  T &parent() {
+    return const_cast<T &>(static_cast<const SymReg *>(this)->parent<T>());
+  }
   friend std::ostream &operator<<(std::ostream &stream, const SymReg &symReg);
+
+private:
+  bool HasName{false};
+  Module *OwningModule{nullptr};
+  Function *OwningFunction{nullptr};
 };
 
 /// \brief Destination for GoTo or Branch instruction.
@@ -36,42 +72,91 @@ using Imm = int;
 /// \brief Value is either constant or located in symbolic register.
 using Value = variant<SymReg, Imm>;
 
-struct InstBase {};
+namespace detail {
+/// \brief Base class for an instruction.
+/// Use Instruction class rather than InstBase for polymorphic code.
+class InstBase {
+public:
+  /// \return Owning basic block
+  /// \pre There must be non null owning basic block
+  BasicBlock &parent() {
+    assert(OwningBB);
+    return *OwningBB;
+  }
+  InstBase(InstBase &&) = default;
+  InstBase(const InstBase &) = delete;
+  InstBase &operator=(InstBase) = delete;
+
+protected:
+  InstBase(BasicBlock &BB) : OwningBB{&BB} {}
+
+private:
+  BasicBlock *OwningBB;
+};
+
+/// \brief An instructuion which return or might return a value in a symbolic
+/// register.
+template <typename ReturnTy> class ReturningInstBase : public InstBase {
+public:
+  const ReturnTy outRegister() const { return OutValue; }
+
+protected:
+  ReturningInstBase(BasicBlock &BB, ReturnTy OutValue)
+      : InstBase(BB), OutValue{OutValue} {}
+
+private:
+  ReturnTy OutValue;
+};
+
+} // namespace detail
+
 /// \brief Represent receiving function argument.
 /// Define function parameter as a symbolic register with unknown value.
-struct ReceiveInst {
-  SymReg VarIdx;
+class ReceiveInst final: public detail::ReturningInstBase<SymReg &> {
+public:
+  friend class MIRBuilder;
+  friend std::ostream &operator<<(std::ostream &Stream,
+                                  const ReceiveInst &Inst);
+
+private:
+  ReceiveInst(BasicBlock &BB, SymReg &RetReg)
+      : detail::ReturningInstBase<SymReg &>(BB, RetReg) {}
 };
 
 /// \brief Unconditional branch.
 struct GoToInst {
   Label Dest;
+  friend std::ostream &operator<<(std::ostream &Stream, const GoToInst &Inst);
 };
 
 /// \brief Conditional branch.
 struct BrInst {
   Value Operand;
   Label Dest;
+  friend std::ostream &operator<<(std::ostream &Stream, const BrInst &Inst);
 };
 
 /// \brief Return value from a function.
 struct RetInst {
   Value Operand;
+  friend std::ostream &operator<<(std::ostream &Stream, const RetInst &Inst);
 };
 
 struct CallInst {
-  optional<SymReg> Dest;
+  optional<SymReg &> Dest;
   std::vector<Value> Arguments;
   auto args_begin() { return std::begin(Arguments); }
   auto args_end() { return std::end(Arguments); }
   auto args_begin() const { return std::cbegin(Arguments); }
   auto args_end() const { return std::cend(Arguments); }
+  friend std::ostream &operator<<(std::ostream &Stream, const CallInst &Inst);
 };
 
 /// \brief Instruction of form a = b.
 struct AssignInst {
   SymReg Dest;
   Value Operand;
+  friend std::ostream &operator<<(std::ostream &Stream, const AssignInst &Inst);
 };
 
 enum class UnOpKind { Neg, Not };
@@ -81,6 +166,7 @@ struct UnOpInst {
   SymReg Dest;
   Value Operand;
   UnOpKind Kind;
+  friend std::ostream &operator<<(std::ostream &Stream, const UnOpInst &Inst);
 };
 
 enum class BinOpKind {
@@ -111,17 +197,19 @@ struct BinOpInst {
   Value Operand1;
   Value Operand2;
   BinOpKind Kind;
+  friend std::ostream &operator<<(std::ostream &Stream, const BinOpInst &Inst);
 };
 
 using Instruction = variant<ReceiveInst, RetInst, GoToInst, BrInst, CallInst,
                             UnOpInst, BinOpInst, AssignInst>;
+std::ostream &operator<<(std::ostream &Stream, const Instruction &Inst);
 
 class BasicBlock {
 public:
   auto begin() { return std::begin(Instructions); }
-  auto end() const { return std::end(Instructions); }
-  auto cbegin() { return std::cbegin(Instructions); }
-  auto cend() const { return std::cend(Instructions); }
+  auto end() { return std::end(Instructions); }
+  auto begin() const { return std::cbegin(Instructions); }
+  auto end() const { return std::cend(Instructions); }
   Instruction &operator[](size_t index) { return Instructions[index]; }
   Function &parent() { return OwningFunction; }
   const Function &parent() const { return OwningFunction; }
@@ -136,7 +224,7 @@ public:
 private:
   BasicBlock(Function &Parent) : OwningFunction{Parent} {}
   Function &OwningFunction;
-  std::vector<Instruction> Instructions{};
+  boost::container::stable_vector<Instruction> Instructions{};
   bool HasLabel{};
 };
 
@@ -153,6 +241,9 @@ public:
   Function &operator=(Function &&) = default;
   Module &parent() { return OwningModule; }
   const Module &parent() const { return OwningModule; }
+  const boost::container::stable_vector<SymReg> &symbolicRegisters() const {
+    return SymbolicRegisters;
+  }
   const string_view Name;
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &stream,
@@ -166,6 +257,7 @@ private:
       : Name{internedName(std::move(Name))},
         OwningModule{Parent}, ArgNames{std::move(ArgNames)} {}
   boost::container::stable_vector<BasicBlock> BasicBlocks{};
+  boost::container::stable_vector<SymReg> SymbolicRegisters{};
 };
 
 class Module {
@@ -220,9 +312,16 @@ public:
   /// \brief Find global variable with \p name in the module and return
   /// corresponding symbolic register.
   SymReg *findGlobalVariable(string_view name) const;
+  Instruction &createReceiveInst(std::string &&Name = "");
+  Function *currentFuction() {
+    return (CurrentBB == nullptr) ? nullptr : &CurrentBB->parent();
+  }
   MIRBuilder(Module &module) : TheModule{module} {}
 
 private:
+  /// \brief Find existing register with Name or create it in curruent fuction
+  /// scope. If Name is empty create new unnamed register and return it.
+  SymReg &symReg(std::string &&Name, Function *Func = nullptr);
   Module &TheModule;
   BasicBlock *CurrentBB{nullptr};
 };

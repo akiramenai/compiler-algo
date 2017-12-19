@@ -12,7 +12,8 @@ namespace wyrm {
 
 class Module;
 class Function;
-struct SymReg;
+class BasicBlock;
+class SymReg;
 using InternedStrings = std::unordered_set<std::string>;
 using NameTableT = std::unordered_map<const void *, string_view>;
 struct ModuleST {
@@ -20,8 +21,11 @@ struct ModuleST {
   std::unordered_map<string_view, SymReg *> GlobalVariables;
 };
 using ModuleSymbolsT = std::unordered_map<Module *, ModuleST>;
-using FunctionSymbolsT =
-    std::unordered_map<Function *, std::unordered_set<string_view>>;
+struct FunctionST {
+  std::unordered_map<string_view, BasicBlock *> Labels;
+  std::unordered_map<string_view, SymReg *> LocalVariables;
+};
+using FunctionSymbolsT = std::unordered_map<Function *, FunctionST>;
 
 class WyrmContext {
 public:
