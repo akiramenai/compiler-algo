@@ -123,13 +123,128 @@ static InstContext createInstContext() {
   Builder->setBasicBlock(Builder->createBasicBlock(*F));
   return {std::move(TheModule), std::move(Builder)};
 }
-} // namespace
 
 TEST(MIRBuilder, ReceiveInstDump) {
   auto[TheModule, Builder] = createInstContext();
-  auto &RcvInst = Builder->createReceiveInst();
+  auto &Inst = Builder->createReceiveInst();
   std::stringstream Expected{}, Actual{};
   Expected << "  %1 = receive\n";
-  Actual << RcvInst;
+  Actual << Inst;
   EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
 }
+
+TEST(MIRBuilder, GoToInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  auto &BB = Builder->createBasicBlock(Builder->currentBasicBlock()->parent());
+  auto &Inst = Builder->createGoToInst(BB);
+  std::stringstream Expected{}, Actual{};
+  Expected << "  goto BB2\n";
+  Actual << Inst;
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+
+TEST(MIRBuilder, BrInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  auto &BB1 = Builder->createBasicBlock(Builder->currentBasicBlock()->parent(),
+                                        "TrueBB");
+  auto &BB2 = Builder->createBasicBlock(Builder->currentBasicBlock()->parent(),
+                                        "FalseBB");
+  auto &Inst = Builder->createBrInst(1, BB1, BB2);
+  std::stringstream Expected{}, Actual{};
+  Expected << "  br 1, TrueBB, FalseBB\n";
+  Actual << Inst;
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+
+TEST(MIRBuilder, RetInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  auto &Inst = Builder->createRetInst(1);
+  std::stringstream Expected{}, Actual{};
+  Expected << "  ret 1\n";
+  Actual << Inst;
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+
+TEST(MIRBuilder, CallInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  auto *Callee = Builder->createFunction("sum", {"x", "y"});
+  ASSERT_TRUE(Callee);
+  auto &Inst = Builder->createCallInst(true, *Callee, {1, 2}, "add.res");
+  std::stringstream Expected{}, Actual{};
+  Expected << "  %add.res = call sum(1, 2)\n";
+  Actual << Inst;
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+
+TEST(MIRBuilder, UnOpInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  auto &Inst1 = Builder->createUnOpInst(UnOpKind::Assign, 5);
+  auto &Inst1Un = get<UnOpInst>(Inst1);
+  auto &Inst2 = Builder->createUnOpInst(UnOpKind::Neg, Inst1Un.outRegister());
+  auto &Inst2Un = get<UnOpInst>(Inst2);
+  auto &Inst3 = Builder->createUnOpInst(UnOpKind::Not, Inst2Un.outRegister());
+  std::stringstream Expected{}, Actual{};
+  Expected << "  %1 = 5\n"
+              "  %2 = neg %1\n"
+              "  %3 = not %2\n";
+  Actual << Inst1 << Inst2 << Inst3;
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+
+TEST(MIRBuilder, BinOpInstDump) {
+  auto[TheModule, Builder] = createInstContext();
+  ASSERT_TRUE(Builder->currentBasicBlock());
+  std::stringstream Expected{}, Actual{};
+  auto &Inst1 = Builder->createUnOpInst(UnOpKind::Assign, 5);
+  auto &Inst1Un = get<UnOpInst>(Inst1);
+  SymReg *OutRegPrev = &Inst1Un.outRegister();
+  ASSERT_TRUE(OutRegPrev);
+  for (size_t I = 0, E = static_cast<size_t>(BinOpKind::Geq); I <= E; ++I) {
+    auto &Inst =
+        Builder->createBinOpInst(static_cast<BinOpKind>(I), *OutRegPrev, I);
+    auto &InstBin = get<BinOpInst>(Inst);
+    OutRegPrev = &InstBin.outRegister();
+    ASSERT_TRUE(OutRegPrev);
+    Actual << Inst;
+  }
+  Expected << "  %2 = add %1, 0\n"
+              "  %3 = sub %2, 1\n"
+              "  %4 = mul %3, 2\n"
+              "  %5 = div %4, 3\n"
+              "  %6 = mod %5, 4\n"
+              "  %7 = min %6, 5\n"
+              "  %8 = max %7, 6\n"
+              "  %9 = shl %8, 7\n"
+              "  %10 = shr %9, 8\n"
+              "  %11 = shra %10, 9\n"
+              "  %12 = and %11, 10\n"
+              "  %13 = or %12, 11\n"
+              "  %14 = xor %13, 12\n"
+              "  %15 = cmp eq %14, 13\n"
+              "  %16 = cmp neq %15, 14\n"
+              "  %17 = cmp lt %16, 15\n"
+              "  %18 = cmp leq %17, 16\n"
+              "  %19 = cmp gt %18, 17\n"
+              "  %20 = cmp ge %19, 18\n";
+  EXPECT_EQ(Expected.str(), Actual.str());
+  Builder.release();
+  TheModule.release();
+}
+} // namespace

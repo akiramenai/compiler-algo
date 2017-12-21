@@ -64,13 +64,11 @@ private:
   Function *OwningFunction{nullptr};
 };
 
-/// \brief Destination for GoTo or Branch instruction.
-using Label = std::size_t;
 /// \brief Type of constants.
 /// \todo Add float point numbers and composites.
 using Imm = int;
 /// \brief Value is either constant or located in symbolic register.
-using Value = variant<SymReg, Imm>;
+using Value = variant<SymReg &, Imm>;
 
 namespace detail {
 /// \brief Base class for an instruction.
@@ -98,6 +96,7 @@ private:
 /// register.
 template <typename ReturnTy> class ReturningInstBase : public InstBase {
 public:
+  ReturnTy outRegister() { return OutValue; }
   const ReturnTy outRegister() const { return OutValue; }
 
 protected:
@@ -108,65 +107,119 @@ private:
   ReturnTy OutValue;
 };
 
+class UnaryInstBase {
+public:
+  Value operand() { return Operand; }
+  const Value operand() const { return Operand; }
+
+protected:
+  UnaryInstBase(Value Operand) : Operand{Operand} {}
+  Value Operand;
+};
+
 } // namespace detail
 
 /// \brief Represent receiving function argument.
 /// Define function parameter as a symbolic register with unknown value.
-class ReceiveInst final: public detail::ReturningInstBase<SymReg &> {
+class ReceiveInst final : public detail::ReturningInstBase<SymReg &> {
 public:
   friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &Stream,
                                   const ReceiveInst &Inst);
 
 private:
-  ReceiveInst(BasicBlock &BB, SymReg &RetReg)
-      : detail::ReturningInstBase<SymReg &>(BB, RetReg) {}
+  ReceiveInst(BasicBlock &OwningBB, SymReg &RetReg)
+      : detail::ReturningInstBase<SymReg &>(OwningBB, RetReg) {}
 };
 
 /// \brief Unconditional branch.
-struct GoToInst {
-  Label Dest;
+class GoToInst final : public detail::InstBase {
+public:
+  friend class MIRBuilder;
+  BasicBlock &successor() { return Successor; }
+  const BasicBlock &successor() const { return Successor; }
   friend std::ostream &operator<<(std::ostream &Stream, const GoToInst &Inst);
+
+private:
+  GoToInst(BasicBlock &OwningBB, BasicBlock &Destination)
+      : detail::InstBase(OwningBB), Successor{Destination} {}
+  BasicBlock &Successor;
 };
 
 /// \brief Conditional branch.
-struct BrInst {
-  Value Operand;
-  Label Dest;
+class BrInst final : public detail::InstBase {
+public:
+  friend class MIRBuilder;
+  BasicBlock &trueSuccessor() { return TrueSuccessor; }
+  const BasicBlock &trueSuccessor() const { return TrueSuccessor; }
+  BasicBlock &falseSuccessor() { return FalseSuccessor; }
+  const BasicBlock &falseSuccessor() const { return FalseSuccessor; }
+  Value condition() { return Condition; }
+  const Value condition() const { return Condition; }
   friend std::ostream &operator<<(std::ostream &Stream, const BrInst &Inst);
+
+private:
+  BrInst(BasicBlock &OwningBB, Value Condition, BasicBlock &TrueSuccessor,
+         BasicBlock &FalseSuccessor)
+      : detail::InstBase(OwningBB), Condition{Condition},
+        TrueSuccessor{TrueSuccessor}, FalseSuccessor{FalseSuccessor} {}
+  Value Condition;
+  BasicBlock &TrueSuccessor;
+  BasicBlock &FalseSuccessor;
 };
 
 /// \brief Return value from a function.
-struct RetInst {
-  Value Operand;
+class RetInst final : public detail::InstBase, detail::UnaryInstBase {
+public:
+  friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &Stream, const RetInst &Inst);
+
+private:
+  RetInst(BasicBlock &OwningBB, Value RetVal)
+      : detail::InstBase(OwningBB), detail::UnaryInstBase(RetVal) {}
 };
 
-struct CallInst {
-  optional<SymReg &> Dest;
-  std::vector<Value> Arguments;
-  auto args_begin() { return std::begin(Arguments); }
-  auto args_end() { return std::end(Arguments); }
-  auto args_begin() const { return std::cbegin(Arguments); }
-  auto args_end() const { return std::cend(Arguments); }
+class CallInst final : public detail::ReturningInstBase<SymReg *> {
+public:
+  auto begin() { return std::begin(Arguments); }
+  auto end() { return std::end(Arguments); }
+  auto begin() const { return std::cbegin(Arguments); }
+  auto end() const { return std::cend(Arguments); }
+  Function &callee() {
+    assert(Callee && "Callee mustn't be null");
+    return *Callee;
+  }
+  const Function &callee() const {
+    assert(Callee && "Callee mustn't be null");
+    return *Callee;
+  }
+  friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &Stream, const CallInst &Inst);
+
+private:
+  CallInst(BasicBlock &OwningBB, SymReg *RetReg, Function &Callee,
+           std::vector<Value> &&Arguments)
+      : detail::ReturningInstBase<SymReg *>(OwningBB, RetReg), Callee{&Callee},
+        Arguments{std::move(Arguments)} {}
+  Function *Callee;
+  std::vector<Value> Arguments;
 };
 
-/// \brief Instruction of form a = b.
-struct AssignInst {
-  SymReg Dest;
-  Value Operand;
-  friend std::ostream &operator<<(std::ostream &Stream, const AssignInst &Inst);
-};
-
-enum class UnOpKind { Neg, Not };
+enum class UnOpKind { Assign, Neg, Not };
 
 /// \brief Instruction of form a = op b.
-struct UnOpInst {
-  SymReg Dest;
-  Value Operand;
-  UnOpKind Kind;
+class UnOpInst : public detail::ReturningInstBase<SymReg &>,
+                 detail::UnaryInstBase {
+public:
+  UnOpKind kind() const { return Kind; }
+  friend class MIRBuilder;
   friend std::ostream &operator<<(std::ostream &Stream, const UnOpInst &Inst);
+
+private:
+  UnOpInst(BasicBlock &OwningBB, SymReg &RetReg, UnOpKind Kind, Value Operand)
+      : detail::ReturningInstBase<SymReg &>(OwningBB, RetReg),
+        detail::UnaryInstBase(Operand), Kind{Kind} {}
+  UnOpKind Kind;
 };
 
 enum class BinOpKind {
@@ -192,16 +245,28 @@ enum class BinOpKind {
 };
 
 /// \brief Instruction of form a = b op c.
-struct BinOpInst {
-  SymReg Dest;
+class BinOpInst : public detail::ReturningInstBase<SymReg &> {
+public:
+  BinOpKind kind() const { return Kind; }
+  Value operand1() { return Operand1; }
+  const Value operand1() const { return Operand1; }
+  Value operand2() { return Operand2; }
+  const Value operand2() const { return Operand2; }
+  friend class MIRBuilder;
+  friend std::ostream &operator<<(std::ostream &Stream, const BinOpInst &Inst);
+
+private:
+  BinOpInst(BasicBlock &OwningBB, SymReg &RetReg, BinOpKind Kind,
+            Value Operand1, Value Operand2)
+      : detail::ReturningInstBase<SymReg &>(OwningBB, RetReg), Kind{Kind},
+        Operand1{Operand1}, Operand2{Operand2} {}
+  BinOpKind Kind;
   Value Operand1;
   Value Operand2;
-  BinOpKind Kind;
-  friend std::ostream &operator<<(std::ostream &Stream, const BinOpInst &Inst);
 };
 
 using Instruction = variant<ReceiveInst, RetInst, GoToInst, BrInst, CallInst,
-                            UnOpInst, BinOpInst, AssignInst>;
+                            UnOpInst, BinOpInst>;
 std::ostream &operator<<(std::ostream &Stream, const Instruction &Inst);
 
 class BasicBlock {
@@ -293,6 +358,7 @@ public:
   }
   /// \brief Set \p BB as the current basic block.
   void setBasicBlock(BasicBlock &bb) { CurrentBB = &bb; }
+  BasicBlock *currentBasicBlock() { return CurrentBB; }
   /// \brief Add a new basic block to \p func's basic block list.
   /// \param label Optional label for the block for GoTo instructions. Emptry
   /// string means no label.
@@ -313,18 +379,39 @@ public:
   /// corresponding symbolic register.
   SymReg *findGlobalVariable(string_view name) const;
   Instruction &createReceiveInst(std::string &&Name = "");
+  Instruction &createGoToInst(BasicBlock &Destination);
+  Instruction &createBrInst(Value Condition, BasicBlock &TrueDestination,
+                            BasicBlock &FalseDestination);
+  Instruction &createRetInst(Value ReturnValue);
+  Instruction &createCallInst(bool ReturnValue, Function &Callee,
+                              std::vector<Value> &&Arguments,
+                              std::string &&Name = "");
+  Instruction &createUnOpInst(UnOpKind Kind, Value Operand,
+                              std::string &&Name = "");
+  Instruction &createBinOpInst(BinOpKind Kind, Value Operand1, Value Operand2,
+                               std::string &&Name = "");
   Function *currentFuction() {
     return (CurrentBB == nullptr) ? nullptr : &CurrentBB->parent();
   }
   MIRBuilder(Module &module) : TheModule{module} {}
 
 private:
+  template <typename InstTy, typename... ArgsTy>
+  Instruction &createInst(ArgsTy &&... Args);
   /// \brief Find existing register with Name or create it in curruent fuction
   /// scope. If Name is empty create new unnamed register and return it.
   SymReg &symReg(std::string &&Name, Function *Func = nullptr);
   Module &TheModule;
   BasicBlock *CurrentBB{nullptr};
 };
+
+template <typename InstTy, typename... ArgsTy>
+Instruction &MIRBuilder::createInst(ArgsTy &&... Args) {
+  assert(CurrentBB && "Instruction must belong to a basic block");
+  InstTy Inst{*CurrentBB, std::forward<ArgsTy>(Args)...};
+  CurrentBB->Instructions.push_back(std::move(Inst));
+  return CurrentBB->Instructions.back();
+}
 
 } // namespace wyrm
 #endif // MIR_H

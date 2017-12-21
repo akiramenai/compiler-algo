@@ -6,50 +6,98 @@
 
 namespace wyrm {
 
+static size_t bbNumber(const BasicBlock &BB) {
+  if (BB.hasLabel())
+    return 0;
+  size_t BBNum{1};
+  auto &Func = BB.parent();
+  for (const auto &CurrBB : Func) {
+    if (&BB == &CurrBB)
+      break;
+    BBNum += !CurrBB.hasLabel();
+  }
+  return BBNum;
+}
+
 std::ostream &operator<<(std::ostream &Stream, const ReceiveInst &Inst) {
   Stream << "  " << Inst.outRegister() << " = receive\n";
   return Stream;
 }
 
+static void dumpLabel(std::ostream &Stream, const BasicBlock &BB) {
+  if (BB.hasLabel())
+    Stream << GlobalContext.Names.at(&BB);
+  else
+    Stream << "BB" << std::to_string(bbNumber(BB));
+}
+
 std::ostream &operator<<(std::ostream &Stream, const GoToInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  const BasicBlock &Successor{Inst.successor()};
+  Stream << "  goto ";
+  dumpLabel(Stream, Successor);
+  Stream << "\n";
   return Stream;
 }
 
 std::ostream &operator<<(std::ostream &Stream, const BrInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  auto Cond = Inst.condition();
+  auto &TrueSuccessor = Inst.trueSuccessor();
+  auto &FalseSuccessor = Inst.falseSuccessor();
+  Stream << "  br " << Cond << ", ";
+  dumpLabel(Stream, TrueSuccessor);
+  Stream << ", ";
+  dumpLabel(Stream, FalseSuccessor);
+  Stream << "\n";
   return Stream;
 }
 
 std::ostream &operator<<(std::ostream &Stream, const RetInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  auto Val = Inst.operand();
+  Stream << "  ret " << Val << "\n";
   return Stream;
 }
 
 std::ostream &operator<<(std::ostream &Stream, const CallInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
-  return Stream;
-}
-
-std::ostream &operator<<(std::ostream &Stream, const AssignInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  auto *RetVal = Inst.outRegister();
+  Stream << "  ";
+  if (RetVal)
+    Stream << *RetVal << " = call ";
+  Stream << Inst.callee().Name << "(";
+  auto It = std::cbegin(Inst);
+  if (It != std::cend(Inst)) {
+    for (auto E = std::prev(std::cend(Inst)); It != E; ++It)
+      Stream << *It << ", ";
+    Stream << *It;
+  }
+  Stream << ")\n";
   return Stream;
 }
 
 std::ostream &operator<<(std::ostream &Stream, const UnOpInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  auto &RetVal = Inst.outRegister();
+  Stream << "  " << RetVal << " = ";
+  std::unordered_map<UnOpKind, std::string> InstNames = {
+      {UnOpKind::Assign, ""}, {UnOpKind::Neg, "neg "}, {UnOpKind::Not, "not "}};
+  Stream << InstNames[Inst.kind()] << Inst.operand() << "\n";
   return Stream;
 }
 
 std::ostream &operator<<(std::ostream &Stream, const BinOpInst &Inst) {
-  (void)Inst;
-  assert(false && "Not implemented");
+  auto &RetVal = Inst.outRegister();
+  Stream << "  " << RetVal << " = ";
+  std::unordered_map<BinOpKind, std::string> InstNames = {
+      {BinOpKind::Add, "add"},     {BinOpKind::Sub, "sub"},
+      {BinOpKind::Mul, "mul"},     {BinOpKind::Div, "div"},
+      {BinOpKind::Mod, "mod"},     {BinOpKind::Min, "min"},
+      {BinOpKind::Max, "max"},     {BinOpKind::Shl, "shl"},
+      {BinOpKind::Shr, "shr"},     {BinOpKind::Shra, "shra"},
+      {BinOpKind::And, "and"},     {BinOpKind::Or, "or"},
+      {BinOpKind::Xor, "xor"},     {BinOpKind::Eq, "cmp eq"},
+      {BinOpKind::Neq, "cmp neq"}, {BinOpKind::Less, "cmp lt"},
+      {BinOpKind::Leq, "cmp leq"}, {BinOpKind::Greater, "cmp gt"},
+      {BinOpKind::Geq, "cmp ge"}};
+  Stream << InstNames[Inst.kind()] << " " << Inst.operand1() << ", "
+         << Inst.operand2() << "\n";
   return Stream;
 }
 
@@ -200,11 +248,40 @@ SymReg &MIRBuilder::symReg(std::string &&Name, Function *Func) {
 }
 
 Instruction &MIRBuilder::createReceiveInst(std::string &&Name) {
-  assert(CurrentBB && "Instruction must belong to a basic block");
   SymReg &Register = symReg(std::move(Name));
-  ReceiveInst Inst{*CurrentBB, Register};
-  CurrentBB->Instructions.push_back(std::move(Inst));
-  return CurrentBB->Instructions.back();
+  return createInst<ReceiveInst>(Register);
 }
 
+Instruction &MIRBuilder::createGoToInst(BasicBlock &Destination) {
+  return createInst<GoToInst>(Destination);
+}
+
+Instruction &MIRBuilder::createBrInst(Value Condition,
+                                      BasicBlock &TrueDestination,
+                                      BasicBlock &FalseDestination) {
+  return createInst<BrInst>(Condition, TrueDestination, FalseDestination);
+}
+
+Instruction &MIRBuilder::createRetInst(Value ReturnValue) {
+  return createInst<RetInst>(ReturnValue);
+}
+
+Instruction &MIRBuilder::createCallInst(bool ReturnValue, Function &Callee,
+                                        std::vector<Value> &&Arguments,
+                                        std::string &&Name) {
+  SymReg *RetReg = ReturnValue ? &symReg(std::move(Name)) : nullptr;
+  return createInst<CallInst>(RetReg, Callee, std::move(Arguments));
+}
+
+Instruction &MIRBuilder::createUnOpInst(UnOpKind Kind, Value Operand,
+                                        std::string &&Name) {
+  SymReg &RetReg = symReg(std::move(Name));
+  return createInst<UnOpInst>(RetReg, Kind, Operand);
+}
+
+Instruction &MIRBuilder::createBinOpInst(BinOpKind Kind, Value Operand1,
+                                         Value Operand2, std::string &&Name) {
+  SymReg &RetReg = symReg(std::move(Name));
+  return createInst<BinOpInst>(RetReg, Kind, Operand1, Operand2);
+}
 } // namespace wyrm
