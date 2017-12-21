@@ -26,13 +26,19 @@
 namespace wyrm {
 #if __has_include(<variant>) && !defined(USE_BOOST_CONTAINERS)
 template <typename... Args> using variant = std::variant<Args...>;
-inline auto visit = [](auto &&... Args) {
-  return std::visit(std::forward<decltype(Args)>(Args)...);
+template <typename... ArgTys> inline auto visit(ArgTys &&... Args) {
+  return std::visit(std::forward<ArgTys>(Args)...);
+};
+template <typename T, typename... ArgTys> inline auto get(ArgTys &&... Args) {
+  return std::get<T>(std::forward<ArgTys>(Args)...);
 };
 #else
 template <typename... Args> using variant = boost::variant<Args...>;
-inline auto visit = [](auto &&... Args) {
-  return boost::apply_visitor(std::forward<decltype(Args)>(Args)...);
+template <typename... ArgTys> inline auto visit(ArgTys &&... Args) {
+  return boost::apply_visitor(std::forward<ArgTys>(Args)...);
+};
+template <typename T, typename... ArgTys> inline auto get(ArgTys &&... Args) {
+  return boost::get<T>(std::forward<ArgTys>(Args)...);
 };
 #endif
 
