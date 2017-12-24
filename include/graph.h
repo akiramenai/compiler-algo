@@ -30,11 +30,20 @@ public:
   // \brief Graph nodes listed in DFS order.
   std::vector<std::size_t> DFSOrder() const;
 
+  /// \return If the graph has \p arc
+  bool hasArc(Arc A) const {
+    if (A.From >= Data.size())
+      return false;
+    return Data[A.From].count(A.To);
+  }
+
   // \brief Print the graph to stdout.
   void dump() const;
 
   Graph(const std::vector<Arc> &arcs);
   Graph(std::initializer_list<Arc> Arcs);
+
+  static constexpr size_t Root = 0;
 
 private:
   // \brief Adjacency list of the graph.

@@ -66,3 +66,16 @@ TEST(Dominance, Dominators2) {
   CHECK_NODE(6, {0, 1, 3, 4, 6});
   CHECK_NODE(7, {0, 1, 7});
 }
+
+TEST(Dominance, ImmediateDominators) {
+  Graph &G{Graphs[1]};
+  auto DomTree = wyrm::buildDominatorTree(G);
+  DomTree.dump();
+  EXPECT_TRUE(DomTree.hasArc({0, 1}));
+  EXPECT_TRUE(DomTree.hasArc({1, 2}));
+  EXPECT_TRUE(DomTree.hasArc({1, 3}));
+  EXPECT_TRUE(DomTree.hasArc({3, 4}));
+  EXPECT_TRUE(DomTree.hasArc({4, 5}));
+  EXPECT_TRUE(DomTree.hasArc({4, 6}));
+  EXPECT_TRUE(DomTree.hasArc({1, 7}));
+}
